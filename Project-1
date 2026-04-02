@@ -1,0 +1,61 @@
+import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+
+# Load data
+df = pd.read_csv("OnlineRetail.csv")
+
+# Cleaning
+df.dropna(inplace=True)
+df = df[df['Quantity'] > 0]
+df['InvoiceDate'] = pd.to_datetime(df['InvoiceDate'])
+df['TotalPrice'] = df['Quantity'] * df['UnitPrice']
+
+# RFM
+snapshot_date = df['InvoiceDate'].max() + pd.Timedelta(days=1)
+
+rfm = df.groupby('CustomerID').agg({
+    'InvoiceDate': lambda x: (snapshot_date - x.max()).days,
+    'InvoiceNo': 'count',
+    'TotalPrice': 'sum'
+})
+
+rfm.columns = ['Recency','Frequency','Monetary']
+
+# Scaling
+scaler = StandardScaler()
+rfm_scaled = scaler.fit_transform(rfm)
+
+# Elbow
+wcss = []
+for i in range(1,6):
+    k = KMeans(n_clusters=i, random_state=42)
+    k.fit(rfm_scaled)
+    wcss.append(k.inertia_)
+
+plt.plot(range(1,6), wcss)
+plt.show()
+
+# Model
+kmeans = KMeans(n_clusters=4, random_state=42)
+rfm['Cluster'] = kmeans.fit_predict(rfm_scaled)
+
+# Label
+rfm['Segment'] = rfm['Cluster'].map({
+    0:'High Value',
+    1:'At Risk',
+    2:'Loyal',
+    3:'Low Value'
+})
+
+print(rfm.groupby('Segment').mean())
+
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(6,4))
+plt.scatter(rfm['Recency'], rfm['Monetary'], c=rfm['Cluster'], cmap='viridis')
+plt.xlabel("Recency")
+plt.ylabel("Monetary")
+plt.title("Customer Segments Visualization")
+plt.show()
